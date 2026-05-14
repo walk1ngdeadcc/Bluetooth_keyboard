@@ -1,0 +1,10 @@
+identifier: Bluetooth_keyboard/nrf52840
+name: Bluetooth_keyboard
+vendor: cc
+type: mcu
+arch: arm
+ram: 256
+flash: 1024
+toolchain:
+  - zephyr
+supported: []
