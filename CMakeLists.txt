@@ -3,4 +3,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(Bluetooth_keyboard)
 
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE
+    src/main.c
+    src/key_matrix.c
+)

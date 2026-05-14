@@ -1,0 +1,22 @@
+/ {
+	kbd_matrix: kbd-matrix {
+		compatible = "gpio-kbd-matrix";
+		status = "disabled";
+		row-gpios = <&gpio0 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 7 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 12 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 4 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		col-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>,
+			    <&gpio0 6 GPIO_ACTIVE_LOW>,
+			    <&gpio0 26 GPIO_ACTIVE_LOW>,
+			    <&gpio0 30 GPIO_ACTIVE_LOW>;
+		debounce-down-ms = <5>;
+		debounce-up-ms = <10>;
+		poll-period-ms = <5>;
+		poll-timeout-ms = <0>;
+		idle-mode = "scan";
+		settle-time-us = <50>;
+	};
+};
