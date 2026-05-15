@@ -1,4 +1,12 @@
 / {
+	hid_dev_0: hid_dev_0 {
+		compatible = "zephyr,hid-device";
+		label = "HID0";
+		protocol-code = "keyboard";
+		in-report-size = <16>;
+		in-polling-period-us = <1000>;
+	};
+
 	kbd_matrix: kbd-matrix {
 		compatible = "gpio-kbd-matrix";
 		status = "disabled";

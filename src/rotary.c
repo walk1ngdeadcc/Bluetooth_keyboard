@@ -5,6 +5,7 @@
 #include <app_event_manager.h>
 
 #define MODULE rotary
+#include <caf/events/button_event.h>
 #include <caf/events/keep_alive_event.h>
 #include <caf/events/module_state_event.h>
 #include <caf/events/power_event.h>
@@ -22,6 +23,8 @@
 
 #define ROTARY_NODE DT_NODELABEL(rotary_qdec)
 #define ROTARY_STEP_ANGLE_DEG 12
+#define ROTARY_KEY_ID_VOLUME_UP 100
+#define ROTARY_KEY_ID_VOLUME_DOWN 101
 
 BUILD_ASSERT(DT_NODE_HAS_STATUS(ROTARY_NODE, okay),
 	     "rotary_qdec node must be enabled");
@@ -34,11 +37,23 @@ static bool rotary_wake_sent;
 
 static void rotary_send_volume_key(int32_t direction)
 {
-	uint32_t usage = (direction > 0) ? HID_USAGE_CONSUMER_VOLUME_INCREMENT :
-					    HID_USAGE_CONSUMER_VOLUME_DECREMENT;
+	uint16_t key_id = (direction > 0) ? ROTARY_KEY_ID_VOLUME_UP :
+					    ROTARY_KEY_ID_VOLUME_DOWN;
+	struct button_event *event;
 
 	printk("rotary volume %s usage=0x%04x\n",
-	       (direction > 0) ? "up" : "down", usage);
+	       (direction > 0) ? "up" : "down",
+	       (direction > 0) ? 0x00E9 : 0x00EA);
+
+	event = new_button_event();
+	event->key_id = key_id;
+	event->pressed = true;
+	APP_EVENT_SUBMIT(event);
+
+	event = new_button_event();
+	event->key_id = key_id;
+	event->pressed = false;
+	APP_EVENT_SUBMIT(event);
 }
 
 static void rotary_input_callback(struct input_event *evt, void *user_data)

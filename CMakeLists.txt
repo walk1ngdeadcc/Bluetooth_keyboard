@@ -13,4 +13,5 @@ target_sources(app PRIVATE
     src/power_trace.c
     src/power_module.c
     src/rotary.c
+    src/usb_hid_module.c
 )
