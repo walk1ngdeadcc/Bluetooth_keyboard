@@ -1,6 +1,7 @@
 /dts-v1/;
 #include <nordic/nrf52840_qfaa.dtsi>
 #include "Bluetooth_keyboard-pinctrl.dtsi"
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
 	model = "Bluetooth_keyboard";
@@ -11,6 +12,22 @@
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
 	};
+
+	rotary_qdec: rotary-qdec {
+		compatible = "gpio-qdec";
+		gpios = <&gpio0 10 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>,
+			<&gpio1 6 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+		steps-per-period = <2>;
+		zephyr,axis = <INPUT_REL_WHEEL>;
+		sample-time-us = <2000>;
+		idle-poll-time-us = <2000>;
+		idle-timeout-ms = <200>;
+		status = "okay";
+	};
+};
+
+&uicr {
+	nfct-pins-as-gpios;
 };
 
 &flash0 {

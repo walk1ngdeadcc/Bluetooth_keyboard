@@ -5,11 +5,21 @@
 
 #include <zephyr/sys/printk.h>
 
+#include "rotary.h"
+
 int main(void)
 {
+	int ret;
+
 	if (app_event_manager_init()) {
 		printk("Application Event Manager init failed\n");
 		return -1;
+	}
+
+	ret = rotary_init();
+	if (ret != 0) {
+		printk("rotary init failed: %d\n", ret);
+		return ret;
 	}
 
 	printk("keyboard app ready\n");
