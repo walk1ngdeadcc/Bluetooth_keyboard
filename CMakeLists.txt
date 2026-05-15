@@ -3,7 +3,9 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(Bluetooth_keyboard)
 
+zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
 target_sources(app PRIVATE
     src/main.c
-    src/key_matrix.c
+    src/power_trace.c
 )
