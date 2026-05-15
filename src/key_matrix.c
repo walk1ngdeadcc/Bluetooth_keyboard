@@ -1,12 +1,16 @@
 #include <errno.h>
 #include <stdbool.h>
 
+#include <app_event_manager.h>
+#include <caf/events/button_event.h>
+
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
+#include "keymap.h"
 #include "key_matrix.h"
 
 #define KEY_MATRIX_NODE DT_NODELABEL(kbd_matrix)
@@ -21,6 +25,15 @@ static const struct gpio_dt_spec row_gpios[KEY_MATRIX_ROWS] = {
 
 static const struct gpio_dt_spec col_gpios[KEY_MATRIX_COLS] = {
 	DT_FOREACH_PROP_ELEM_SEP(KEY_MATRIX_NODE, col_gpios, GPIO_DT_SPEC_GET_BY_IDX, (,))
+};
+
+static const uint16_t key_id_map[KEY_MATRIX_ROWS][KEY_MATRIX_COLS] = {
+	{ UINT16_MAX, UINT16_MAX, UINT16_MAX, 0 },
+	{ 1, 2, 3, 4 },
+	{ 5, 6, 7, UINT16_MAX },
+	{ 8, 9, 10, 11 },
+	{ 12, 13, 14, UINT16_MAX },
+	{ 15, 16, UINT16_MAX, 17 },
 };
 
 static uint32_t last_state[KEY_MATRIX_COLS];
@@ -130,10 +143,21 @@ static void report_changes(const uint32_t *state)
 			}
 
 			bool pressed = (state[col] & BIT(row)) != 0U;
+			uint16_t key_id = key_id_map[row][col];
 
-			printk("matrix key %s: row=%d col=%d\n",
-			       pressed ? "down" : "up",
-			       (int)row, (int)col);
+			if (key_id == UINT16_MAX) {
+				continue;
+			}
+
+			struct button_event *event = new_button_event();
+
+			event->key_id = key_id;
+			event->pressed = pressed;
+			APP_EVENT_SUBMIT(event);
+
+			printk("matrix key %s: id=%u name=%s row=%d col=%d\n",
+			       pressed ? "down" : "up", key_id,
+			       keymap_name_get(key_id), (int)row, (int)col);
 		}
 
 		last_state[col] = state[col];

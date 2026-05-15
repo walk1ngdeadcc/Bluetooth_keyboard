@@ -5,6 +5,7 @@
 
 #include <zephyr/sys/printk.h>
 
+#include "key_matrix.h"
 #include "mode_switch.h"
 #include "power_module.h"
 #include "rotary.h"
@@ -33,6 +34,12 @@ int main(void)
 	ret = mode_switch_init();
 	if (ret != 0) {
 		printk("mode switch init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = key_matrix_init();
+	if (ret != 0) {
+		printk("key matrix init failed: %d\n", ret);
 		return ret;
 	}
 

@@ -16,6 +16,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
+#include <zephyr/usb/class/hid.h>
+
 #include "rotary.h"
 
 #define ROTARY_NODE DT_NODELABEL(rotary_qdec)
@@ -29,6 +31,15 @@ static struct k_spinlock rotary_lock;
 static int32_t rotary_total_angle_deg;
 static bool rotary_in_low_power;
 static bool rotary_wake_sent;
+
+static void rotary_send_volume_key(int32_t direction)
+{
+	uint32_t usage = (direction > 0) ? HID_USAGE_CONSUMER_VOLUME_INCREMENT :
+					    HID_USAGE_CONSUMER_VOLUME_DECREMENT;
+
+	printk("rotary volume %s usage=0x%04x\n",
+	       (direction > 0) ? "up" : "down", usage);
+}
 
 static void rotary_input_callback(struct input_event *evt, void *user_data)
 {
@@ -51,6 +62,8 @@ static void rotary_input_callback(struct input_event *evt, void *user_data)
 	} else {
 		keep_alive();
 	}
+
+	rotary_send_volume_key(evt->value);
 
 	step_count = abs(evt->value);
 	angle_delta = evt->value * ROTARY_STEP_ANGLE_DEG;

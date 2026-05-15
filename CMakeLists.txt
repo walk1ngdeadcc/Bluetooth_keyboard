@@ -6,6 +6,8 @@ project(Bluetooth_keyboard)
 zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 target_sources(app PRIVATE
+    src/key_matrix.c
+    src/keymap.c
     src/main.c
     src/mode_switch.c
     src/power_trace.c
