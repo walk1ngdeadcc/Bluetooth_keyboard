@@ -36,6 +36,8 @@
 #define POWER_KEEPALIVE_INTERVAL_MS 2000 //发送脉冲保活间隔
 #define IP5306_KEY_PULSE_MS 100//脉冲宽度
 #define BAT_ADC_SETTLE_MS 10//BAT_ADC_EN 使能后等待时间
+#define IP5306_PROBE_RETRY_COUNT 5
+#define IP5306_PROBE_RETRY_DELAY_MS 50
 
 #define BATTERY_EMPTY_MV 3300
 #define BATTERY_FULL_MV 4200
@@ -99,6 +101,27 @@ static int ip5306_keepalive_pulse(void)
 	k_msleep(IP5306_KEY_PULSE_MS);
 
 	return gpio_pin_set_dt(&ip5306_key, 1);
+}
+
+static int ip5306_wait_ready(uint8_t *sys_ctl2)
+{
+	int err;
+
+	err = ip5306_keepalive_pulse();
+	if (err != 0) {
+		return err;
+	}
+
+	for (int i = 0; i < IP5306_PROBE_RETRY_COUNT; i++) {
+		err = ip5306_reg_read(IP5306_REG_SYS_CTL2, sys_ctl2);
+		if (err == 0) {
+			return 0;
+		}
+
+		k_msleep(IP5306_PROBE_RETRY_DELAY_MS);
+	}
+
+	return err;
 }
 
 static enum battery_charge_state ip5306_decode_state(uint8_t reg70, uint8_t reg71)
@@ -257,7 +280,6 @@ static void power_poll_work_handler(struct k_work *work)
 			if (err != 0) {
 				printk("ip5306 keepalive pulse failed: %d\n", err);
 			} else {
-				printk("ip5306 keepalive pulse\n");
 				last_keepalive_ms = (uint32_t)now_ms;
 			}
 		}
@@ -304,7 +326,7 @@ int power_module_init(void)
 		return err;
 	}
 
-	err = ip5306_reg_read(IP5306_REG_SYS_CTL2, &sys_ctl2);
+	err = ip5306_wait_ready(&sys_ctl2);
 	if (err != 0) {
 		return err;
 	}

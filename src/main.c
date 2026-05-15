@@ -5,6 +5,7 @@
 
 #include <zephyr/sys/printk.h>
 
+#include "mode_switch.h"
 #include "power_module.h"
 #include "rotary.h"
 
@@ -26,6 +27,12 @@ int main(void)
 	ret = power_module_init();
 	if (ret != 0) {
 		printk("power module init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = mode_switch_init();
+	if (ret != 0) {
+		printk("mode switch init failed: %d\n", ret);
 		return ret;
 	}
 
