@@ -5,6 +5,7 @@
 
 #include <zephyr/sys/printk.h>
 
+#include "power_module.h"
 #include "rotary.h"
 
 int main(void)
@@ -19,6 +20,12 @@ int main(void)
 	ret = rotary_init();
 	if (ret != 0) {
 		printk("rotary init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = power_module_init();
+	if (ret != 0) {
+		printk("power module init failed: %d\n", ret);
 		return ret;
 	}
 

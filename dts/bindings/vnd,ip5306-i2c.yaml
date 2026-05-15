@@ -1,0 +1,16 @@
+description: Injoinic IP5306 I2C power manager helper node
+
+compatible: "vnd,ip5306-i2c"
+
+include: i2c-device.yaml
+
+properties:
+  key-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO used to simulate the active-low KEY pulse.
+
+  bat-adc-en-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO used to enable the battery ADC divider.

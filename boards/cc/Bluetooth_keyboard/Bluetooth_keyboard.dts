@@ -2,6 +2,7 @@
 #include <nordic/nrf52840_qfaa.dtsi>
 #include "Bluetooth_keyboard-pinctrl.dtsi"
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/adc/adc.h>
 
 / {
 	model = "Bluetooth_keyboard";
@@ -23,6 +24,10 @@
 		idle-poll-time-us = <2000>;
 		idle-timeout-ms = <200>;
 		status = "okay";
+	};
+
+	zephyr,user {
+		io-channels = <&adc 7>;
 	};
 };
 
@@ -62,10 +67,43 @@
 	status = "okay";
 };
 
+&adc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	channel@7 {
+		reg = <7>;
+		zephyr,gain = "ADC_GAIN_1_6";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)>;
+		zephyr,input-positive = <NRF_SAADC_AIN7>;
+		zephyr,resolution = <12>;
+		zephyr,oversampling = <4>;
+	};
+};
+
 &gpio0 {
 	status = "okay";
 };
 
 &gpio1 {
 	status = "okay";
+};
+
+&i2c0 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	ip5306: ip5306@75 {
+		compatible = "vnd,ip5306-i2c";
+		reg = <0x75>;
+		key-gpios = <&gpio0 22 GPIO_ACTIVE_LOW>;
+		bat-adc-en-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
 };
