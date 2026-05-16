@@ -7,6 +7,7 @@ zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 target_sources(app PRIVATE
     src/ble_hid_module.c
+    src/display_module.c
     src/key_matrix.c
     src/keymap.c
     src/main.c

@@ -13,6 +13,7 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/irq.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -63,6 +64,7 @@ static bool power_wake_sent;
 static enum battery_charge_state last_charge_state = -1;
 static int last_percent = -1;
 static uint32_t last_keepalive_ms;
+static int32_t last_battery_mv = -1;
 static int32_t last_bat_adc_node_mv = -1;
 static int16_t last_bat_adc_raw = 0;
 
@@ -220,7 +222,8 @@ static int battery_read_mv(int32_t *battery_mv)
 
 	last_bat_adc_raw = sample_buffer;
 	last_bat_adc_node_mv = mv;
-	*battery_mv = mv * BATTERY_DIVIDER_NUM;
+	last_battery_mv = mv * BATTERY_DIVIDER_NUM;
+	*battery_mv = last_battery_mv;
 	return 0;
 }
 
@@ -349,6 +352,24 @@ int power_module_init(void)
 	module_set_state(MODULE_STATE_READY);
 
 	return 0;
+}
+
+void power_module_get_status(struct power_module_status *status)
+{
+	unsigned int key;
+
+	if (status == NULL) {
+		return;
+	}
+
+	key = irq_lock();
+	status->valid = (last_percent >= 0) && (last_battery_mv >= 0) &&
+			(last_charge_state >= BATTERY_NOT_CHARGING);
+	status->charging = (last_charge_state == BATTERY_CHARGING);
+	status->full = (last_charge_state == BATTERY_FULL);
+	status->battery_percent = (last_percent >= 0) ? last_percent : 0;
+	status->battery_mv = last_battery_mv;
+	irq_unlock(key);
 }
 
 static bool app_event_handler(const struct app_event_header *aeh)

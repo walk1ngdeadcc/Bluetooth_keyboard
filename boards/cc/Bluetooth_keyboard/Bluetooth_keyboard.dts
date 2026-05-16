@@ -3,6 +3,8 @@
 #include "Bluetooth_keyboard-pinctrl.dtsi"
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/dt-bindings/adc/adc.h>
+#include <zephyr/dt-bindings/mipi_dbi/mipi_dbi.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
 
 / {
 	model = "Bluetooth_keyboard";
@@ -12,6 +14,7 @@
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
+		zephyr,display = &st7789v_lcd;
 	};
 
 	rotary_qdec: rotary-qdec {
@@ -29,6 +32,45 @@
 	zephyr,user {
 		io-channels = <&adc 7>, <&adc 5>;
 		io-channel-names = "battery", "mode";
+		pwms = <&pwm0 0 PWM_USEC(50) PWM_POLARITY_INVERTED>;
+		pwm-names = "lcd_backlight";
+	};
+
+	mipi_dbi {
+		compatible = "zephyr,mipi-dbi-spi";
+		spi-dev = <&spi3>;
+		dc-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+		write-only;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		st7789v_lcd: st7789v@0 {
+			compatible = "sitronix,st7789v";
+			reg = <0>;
+			mipi-max-frequency = <DT_FREQ_M(20)>;
+			width = <320>;
+			height = <172>;
+			x-offset = <0>;
+			y-offset = <34>;
+			vcom = <0x2b>;
+			gctrl = <0x35>;
+			vrhs = <0x0f>;
+			vdvs = <0x20>;
+			mdac = <0xa0>;
+			gamma = <0x01>;
+			colmod = <0x55>;
+			lcm = <0x2c>;
+			porch-param = [0c 0c 00 33 33];
+			cmd2en-param = [5a 69 02 01];
+			pwctrl1-param = [52 a1];
+			pvgam-param = [d0 00 02 07 0b 1a 31 54 40 29 12 12 12 17];
+			nvgam-param = [d0 00 02 07 05 15 2d 44 44 1c 18 16 1c 1d];
+			ram-param = [00 f8];
+			rgb-param = [cd 08 14];
+			ready-time-ms = <120>;
+			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+		};
 	};
 };
 
@@ -106,6 +148,13 @@
 	status = "okay";
 };
 
+&pwm0 {
+	status = "okay";
+	pinctrl-0 = <&pwm0_default>;
+	pinctrl-1 = <&pwm0_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
 &i2c0 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
@@ -121,4 +170,12 @@
 		bat-adc-en-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
+};
+
+&spi3 {
+	status = "okay";
+	pinctrl-0 = <&spi3_default>;
+	pinctrl-1 = <&spi3_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
 };

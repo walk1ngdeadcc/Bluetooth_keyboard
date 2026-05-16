@@ -120,6 +120,7 @@ static const struct bt_data adv_flags[] = {
 
 static struct bt_conn *active_conn;
 static bool active_conn_boot_mode;
+static bool active_conn_peer_bonded;
 static uint8_t keyboard_report[BLE_KBD_REPORT_SIZE];
 static bool ble_ready;
 static bool ble_mode_enabled;
@@ -173,6 +174,31 @@ static size_t bonded_peer_count(void)
 
 	bt_foreach_bond(BT_ID_DEFAULT, bond_count_cb, &count);
 	return count;
+}
+
+struct bond_match_ctx {
+	const bt_addr_le_t *addr;
+	bool found;
+};
+
+static void bond_match_cb(const struct bt_bond_info *info, void *user_data)
+{
+	struct bond_match_ctx *ctx = user_data;
+
+	if (!ctx->found && (bt_addr_le_cmp(&info->addr, ctx->addr) == 0)) {
+		ctx->found = true;
+	}
+}
+
+static bool peer_is_bonded(const bt_addr_le_t *addr)
+{
+	struct bond_match_ctx ctx = {
+		.addr = addr,
+		.found = false,
+	};
+
+	bt_foreach_bond(BT_ID_DEFAULT, bond_match_cb, &ctx);
+	return ctx.found;
 }
 
 static int build_adv_payload(struct bt_data *ad, size_t *ad_len,
@@ -469,6 +495,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 
 	active_conn = bt_conn_ref(conn);
 	active_conn_boot_mode = false;
+	active_conn_peer_bonded = peer_is_bonded(bt_conn_get_dst(conn));
 	advertising = false;
 
 	hids_err = bt_hids_connected(&hids_obj, conn);
@@ -476,12 +503,21 @@ static void connected(struct bt_conn *conn, uint8_t err)
 		printk("ble hids connected notify failed: %d\n", hids_err);
 	}
 
-	hids_err = bt_conn_set_security(conn, BT_SECURITY_L2);
-	if ((hids_err != 0) && (hids_err != -EALREADY)) {
-		printk("ble security request failed: %d\n", hids_err);
+	/*
+	 * For a brand new peer, let the host initiate pairing when it touches
+	 * encrypted HIDS attributes. This avoids immediately taking the
+	 * security-request path that commonly fails with PIN_OR_KEY_MISSING
+	 * when the host still has a stale bond from an older firmware session.
+	 */
+	if (active_conn_peer_bonded) {
+		hids_err = bt_conn_set_security(conn, BT_SECURITY_L2);
+		if ((hids_err != 0) && (hids_err != -EALREADY)) {
+			printk("ble security request failed: %d\n", hids_err);
+		}
 	}
 
-	printk("ble connected: %s\n", addr);
+	printk("ble connected: %s%s\n", addr,
+	       active_conn_peer_bonded ? "" : " (unbonded)");
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -500,6 +536,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		bt_conn_unref(active_conn);
 		active_conn = NULL;
 		active_conn_boot_mode = false;
+		active_conn_peer_bonded = false;
 	}
 
 	memset(keyboard_report, 0, sizeof(keyboard_report));
@@ -517,12 +554,74 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	if (err == 0) {
+		if (conn == active_conn) {
+			active_conn_peer_bonded = true;
+		}
 		printk("ble security: %s level=%u\n", addr, level);
 	} else {
 		printk("ble security failed: %s level=%u err=%d %s\n", addr, level,
 		       err, bt_security_err_to_str(err));
+
+		if (err == BT_SECURITY_ERR_PIN_OR_KEY_MISSING) {
+			bool peer_bonded = peer_is_bonded(bt_conn_get_dst(conn));
+
+			if (peer_bonded) {
+				int unpair_err = bt_unpair(BT_ID_DEFAULT,
+						       bt_conn_get_dst(conn));
+
+				if (unpair_err == 0) {
+					if (conn == active_conn) {
+						active_conn_peer_bonded = false;
+					}
+					printk("ble cleared stale local bond: %s\n", addr);
+				} else {
+					printk("ble clear local bond failed: %s err=%d\n",
+					       addr, unpair_err);
+				}
+			} else {
+				printk("ble pairing hint: host may still have an old bond, "
+				       "delete this device on the host and pair again\n");
+			}
+		}
 	}
 }
+
+static void auth_cancel(struct bt_conn *conn)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	printk("ble pairing cancelled: %s\n", addr);
+}
+
+static void pairing_complete(struct bt_conn *conn, bool bonded)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	if (bonded && (conn == active_conn)) {
+		active_conn_peer_bonded = true;
+	}
+	printk("ble pairing complete: %s bonded=%d\n", addr, bonded);
+}
+
+static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	printk("ble pairing failed: %s reason=%d %s\n", addr, reason,
+	       bt_security_err_to_str(reason));
+}
+
+static const struct bt_conn_auth_cb ble_auth_callbacks = {
+	.cancel = auth_cancel,
+};
+
+static struct bt_conn_auth_info_cb ble_auth_info_callbacks = {
+	.pairing_complete = pairing_complete,
+	.pairing_failed = pairing_failed,
+};
 
 BT_CONN_CB_DEFINE(ble_conn_callbacks) = {
 	.connected = connected,
@@ -610,6 +709,16 @@ static int bt_stack_init(void)
 			return err;
 		}
 		settings_loaded = true;
+	}
+
+	err = bt_conn_auth_cb_register(&ble_auth_callbacks);
+	if (err != 0) {
+		return err;
+	}
+
+	err = bt_conn_auth_info_cb_register(&ble_auth_info_callbacks);
+	if (err != 0) {
+		return err;
 	}
 
 	if (IS_ENABLED(CONFIG_BT_BAS)) {

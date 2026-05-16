@@ -7,6 +7,7 @@
 
 #include "key_matrix.h"
 #include "ble_hid_module.h"
+#include "display_module.h"
 #include "mode_switch.h"
 #include "power_module.h"
 #include "rotary.h"
@@ -50,6 +51,11 @@ int main(void)
 	if (ret != 0) {
 		printk("transport manager init failed: %d\n", ret);
 		return ret;
+	}
+
+	ret = display_module_init();
+	if (ret != 0) {
+		printk("display module init failed: %d\n", ret);
 	}
 
 	ret = mode_switch_init();
