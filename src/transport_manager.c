@@ -84,6 +84,11 @@ int transport_manager_init(void)
 	return 0;
 }
 
+enum app_mode transport_manager_get_active_mode(void)
+{
+	return active_mode;
+}
+
 static bool app_event_handler(const struct app_event_header *aeh)
 {
 	if (is_mode_changed_event(aeh)) {

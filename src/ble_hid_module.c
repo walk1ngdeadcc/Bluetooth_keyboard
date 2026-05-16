@@ -794,6 +794,26 @@ int ble_hid_module_release_all(void)
 	return 0;
 }
 
+bool ble_hid_module_is_enabled(void)
+{
+	return ble_mode_enabled;
+}
+
+bool ble_hid_module_is_ready(void)
+{
+	return ble_ready;
+}
+
+bool ble_hid_module_is_connected(void)
+{
+	return active_conn != NULL;
+}
+
+bool ble_hid_module_is_advertising(void)
+{
+	return advertising;
+}
+
 static bool app_event_handler(const struct app_event_header *aeh)
 {
 	if (is_button_event(aeh)) {

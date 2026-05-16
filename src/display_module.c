@@ -16,10 +16,13 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
+#include "ble_hid_module.h"
+#include "display_assets.h"
 #include "display_module.h"
 #include "mode_event.h"
-#include "mode_switch.h"
 #include "power_module.h"
+#include "transport_manager.h"
+#include "usb_hid_module.h"
 
 #define DISPLAY_NODE DT_CHOSEN(zephyr_display)
 #define DISPLAY_USER_NODE DT_PATH(zephyr_user)
@@ -42,24 +45,50 @@
 	((((uint16_t)(r) & 0xF8U) << 8) | (((uint16_t)(g) & 0xFCU) << 3) | \
 	 (((uint16_t)(b) & 0xF8U) >> 3))
 
-#define COLOR_BG COLOR_RGB565(8, 16, 24)
-#define COLOR_FG COLOR_RGB565(245, 248, 250)
-#define COLOR_MUTED COLOR_RGB565(144, 156, 169)
-#define COLOR_BAR_BG COLOR_RGB565(36, 44, 56)
+#define COLOR_BG COLOR_RGB565(2, 4, 6)
+#define COLOR_TEXT COLOR_RGB565(244, 247, 250)
+#define COLOR_MUTED COLOR_RGB565(134, 145, 156)
+#define COLOR_PANEL_BG COLOR_RGB565(16, 20, 26)
+#define COLOR_PANEL_BORDER COLOR_RGB565(58, 64, 74)
+#define COLOR_DIVIDER COLOR_RGB565(42, 48, 58)
 #define COLOR_LOW COLOR_RGB565(232, 95, 76)
 #define COLOR_MID COLOR_RGB565(234, 179, 66)
-#define COLOR_GOOD COLOR_RGB565(82, 196, 120)
-#define COLOR_USB COLOR_RGB565(89, 174, 255)
-#define COLOR_BLE COLOR_RGB565(64, 214, 145)
-#define COLOR_24G COLOR_RGB565(242, 168, 60)
+#define COLOR_GOOD COLOR_RGB565(88, 230, 108)
+#define COLOR_USB COLOR_RGB565(66, 150, 255)
+#define COLOR_BLE COLOR_RGB565(78, 214, 164)
+#define COLOR_USB_BG COLOR_RGB565(8, 22, 40)
+#define COLOR_BLE_BG COLOR_RGB565(8, 28, 24)
+#define COLOR_DOT_OFF COLOR_RGB565(92, 99, 108)
 
-#define BATTERY_TEXT_Y 18
-#define STATUS_TEXT_Y 58
-#define MODE_TEXT_Y 100
-#define BAR_X 20
-#define BAR_Y 145
-#define BAR_WIDTH (DISPLAY_WIDTH - (BAR_X * 2))
-#define BAR_HEIGHT 12
+#define DIVIDER_X1 108
+#define DIVIDER_X2 208
+#define DIVIDER_Y 18
+#define DIVIDER_H (DISPLAY_HEIGHT - (DIVIDER_Y * 2))
+
+#define LEFT_SECTION_X 12
+#define LEFT_SECTION_W (DIVIDER_X1 - LEFT_SECTION_X - 10)
+#define CENTER_SECTION_X (DIVIDER_X1 + 12)
+#define CENTER_SECTION_W (DIVIDER_X2 - CENTER_SECTION_X - 12)
+#define RIGHT_SECTION_X (DIVIDER_X2 + 12)
+#define RIGHT_SECTION_W (DISPLAY_WIDTH - RIGHT_SECTION_X - 12)
+
+#define BATTERY_ICON_X (LEFT_SECTION_X + 4)
+#define BATTERY_ICON_Y 24
+#define BATTERY_ICON_W (LEFT_SECTION_W - 8)
+#define BATTERY_ICON_H 44
+
+#define BATTERY_TEXT_Y 80
+#define BATTERY_LABEL_Y 130
+
+#define CENTER_VISUAL_Y 30
+#define CENTER_STATUS_Y 116
+
+#define MODE_TITLE_Y 18
+#define MODE_ROW_X RIGHT_SECTION_X
+#define MODE_ROW_W RIGHT_SECTION_W
+#define MODE_ROW_H 38
+#define MODE_USB_Y 50
+#define MODE_BLE_Y 98
 
 BUILD_ASSERT(DT_NODE_HAS_STATUS(DISPLAY_NODE, okay), "display node must be enabled");
 
@@ -73,6 +102,13 @@ struct display_state {
 	bool full;
 	int battery_percent;
 	enum app_mode mode;
+	bool usb_enabled;
+	bool usb_ready;
+	bool usb_vbus_present;
+	bool ble_enabled;
+	bool ble_ready;
+	bool ble_connected;
+	bool ble_advertising;
 };
 
 static atomic_t display_flags;
@@ -177,32 +213,6 @@ static const uint8_t *glyph_for_char(char c)
 	}
 }
 
-static const char *mode_text(enum app_mode mode)
-{
-	switch (mode) {
-	case APP_MODE_USB:
-		return "USB";
-	case APP_MODE_24G:
-		return "2.4G";
-	case APP_MODE_BLE:
-	default:
-		return "BLE";
-	}
-}
-
-static uint16_t mode_color(enum app_mode mode)
-{
-	switch (mode) {
-	case APP_MODE_USB:
-		return COLOR_USB;
-	case APP_MODE_24G:
-		return COLOR_24G;
-	case APP_MODE_BLE:
-	default:
-		return COLOR_BLE;
-	}
-}
-
 static uint16_t battery_color(int percent)
 {
 	if (percent <= 20) {
@@ -214,6 +224,69 @@ static uint16_t battery_color(int percent)
 	}
 
 	return COLOR_GOOD;
+}
+
+static uint16_t mode_fill_color(enum app_mode mode, bool selected)
+{
+	if (!selected) {
+		return COLOR_PANEL_BG;
+	}
+
+	switch (mode) {
+	case APP_MODE_USB:
+		return COLOR_USB_BG;
+	case APP_MODE_BLE:
+	default:
+		return COLOR_BLE_BG;
+	}
+}
+
+static uint16_t mode_border_color(enum app_mode mode, bool selected)
+{
+	if (!selected) {
+		return COLOR_PANEL_BORDER;
+	}
+
+	switch (mode) {
+	case APP_MODE_USB:
+		return COLOR_USB;
+	case APP_MODE_BLE:
+	default:
+		return COLOR_BLE;
+	}
+}
+
+static uint16_t mode_indicator_color(const struct display_state *state,
+					 enum app_mode mode)
+{
+	switch (mode) {
+	case APP_MODE_USB:
+		if (state->usb_ready) {
+			return COLOR_GOOD;
+		}
+
+		if (state->usb_vbus_present) {
+			return COLOR_USB;
+		}
+
+		return COLOR_DOT_OFF;
+
+	case APP_MODE_BLE:
+	default:
+		if (state->ble_connected) {
+			return COLOR_GOOD;
+		}
+
+		if (state->ble_enabled && state->ble_advertising) {
+			return COLOR_BLE;
+		}
+
+		if (state->ble_enabled && state->ble_ready) {
+			return COLOR_MUTED;
+		}
+
+		return COLOR_DOT_OFF;
+	}
 }
 
 static int set_backlight_percent(uint8_t percent)
@@ -249,6 +322,153 @@ static void fill_rect(int strip_y, int strip_h, int x, int y, int w, int h,
 	}
 }
 
+static bool point_in_round_rect(int px, int py, int x, int y, int w, int h,
+			       int radius)
+{
+	int local_x;
+	int local_y;
+	int cx;
+	int cy;
+	int dx;
+	int dy;
+
+	if ((px < x) || (px >= (x + w)) || (py < y) || (py >= (y + h))) {
+		return false;
+	}
+
+	radius = MIN(radius, MIN(w, h) / 2);
+	if (radius <= 0) {
+		return true;
+	}
+
+	local_x = px - x;
+	local_y = py - y;
+
+	if ((local_x >= radius && local_x < (w - radius)) ||
+	    (local_y >= radius && local_y < (h - radius))) {
+		return true;
+	}
+
+	cx = (local_x < radius) ? (radius - 1) : (w - radius);
+	cy = (local_y < radius) ? (radius - 1) : (h - radius);
+	dx = local_x - cx;
+	dy = local_y - cy;
+
+	return (dx * dx + dy * dy) <= (radius * radius);
+}
+
+static void fill_round_rect(int strip_y, int strip_h, int x, int y, int w, int h,
+			    int radius, uint16_t color)
+{
+	int x0 = CLAMP(x, 0, DISPLAY_WIDTH);
+	int x1 = CLAMP(x + w, 0, DISPLAY_WIDTH);
+	int y0 = MAX(y, strip_y);
+	int y1 = MIN(y + h, strip_y + strip_h);
+
+	if ((w <= 0) || (h <= 0) || (x0 >= x1) || (y0 >= y1)) {
+		return;
+	}
+
+	for (int gy = y0; gy < y1; gy++) {
+		uint16_t *row = &strip_buffer[(gy - strip_y) * DISPLAY_WIDTH];
+
+		for (int gx = x0; gx < x1; gx++) {
+			if (point_in_round_rect(gx, gy, x, y, w, h, radius)) {
+				row[gx] = color;
+			}
+		}
+	}
+}
+
+static void draw_round_rect_outline(int strip_y, int strip_h, int x, int y, int w,
+				    int h, int radius, int thickness,
+				    uint16_t border_color, uint16_t inner_color)
+{
+	fill_round_rect(strip_y, strip_h, x, y, w, h, radius, border_color);
+
+	if ((w <= (thickness * 2)) || (h <= (thickness * 2))) {
+		return;
+	}
+
+	fill_round_rect(strip_y, strip_h, x + thickness, y + thickness,
+			w - (thickness * 2), h - (thickness * 2),
+			MAX(radius - thickness, 0), inner_color);
+}
+
+static void fill_circle(int strip_y, int strip_h, int cx, int cy, int radius,
+		       uint16_t color)
+{
+	int x0 = CLAMP(cx - radius, 0, DISPLAY_WIDTH);
+	int x1 = CLAMP(cx + radius + 1, 0, DISPLAY_WIDTH);
+	int y0 = MAX(cy - radius, strip_y);
+	int y1 = MIN(cy + radius + 1, strip_y + strip_h);
+	int radius_sq = radius * radius;
+
+	if ((radius <= 0) || (x0 >= x1) || (y0 >= y1)) {
+		return;
+	}
+
+	for (int gy = y0; gy < y1; gy++) {
+		int dy = gy - cy;
+		uint16_t *row = &strip_buffer[(gy - strip_y) * DISPLAY_WIDTH];
+
+		for (int gx = x0; gx < x1; gx++) {
+			int dx = gx - cx;
+
+			if ((dx * dx + dy * dy) <= radius_sq) {
+				row[gx] = color;
+			}
+		}
+	}
+}
+
+static void draw_circle_ring(int strip_y, int strip_h, int cx, int cy, int radius,
+			     int thickness, uint16_t ring_color,
+			     uint16_t fill_color)
+{
+	fill_circle(strip_y, strip_h, cx, cy, radius, ring_color);
+
+	if (radius > thickness) {
+		fill_circle(strip_y, strip_h, cx, cy, radius - thickness, fill_color);
+	}
+}
+
+static int int_abs(int value)
+{
+	return (value < 0) ? -value : value;
+}
+
+static void draw_line(int strip_y, int strip_h, int x0, int y0, int x1, int y1,
+		      int thickness, uint16_t color)
+{
+	int dx = int_abs(x1 - x0);
+	int sx = (x0 < x1) ? 1 : -1;
+	int dy = -int_abs(y1 - y0);
+	int sy = (y0 < y1) ? 1 : -1;
+	int err = dx + dy;
+
+	while (true) {
+		fill_rect(strip_y, strip_h, x0 - (thickness / 2),
+			  y0 - (thickness / 2), thickness, thickness, color);
+
+		if ((x0 == x1) && (y0 == y1)) {
+			break;
+		}
+
+		int e2 = err * 2;
+
+		if (e2 >= dy) {
+			err += dy;
+			x0 += sx;
+		}
+
+		if (e2 <= dx) {
+			err += dx;
+			y0 += sy;
+		}
+	}
+}
+
 static void draw_char(int strip_y, int strip_h, int x, int y, char c,
 		      uint8_t scale, uint16_t color)
 {
@@ -260,10 +480,8 @@ static void draw_char(int strip_y, int strip_h, int x, int y, char c,
 				continue;
 			}
 
-			fill_rect(strip_y, strip_h,
-				  x + (col * scale),
-				  y + (row * scale),
-				  scale, scale, color);
+			fill_rect(strip_y, strip_h, x + (col * scale),
+				  y + (row * scale), scale, scale, color);
 		}
 	}
 }
@@ -289,12 +507,202 @@ static void draw_text(int strip_y, int strip_h, int x, int y, const char *text,
 	}
 }
 
-static void draw_text_centered(int strip_y, int strip_h, int y, const char *text,
-			       uint8_t scale, uint16_t color)
+static void draw_text_box_centered(int strip_y, int strip_h, int x, int w, int y,
+				   const char *text, uint8_t scale,
+				   uint16_t color)
 {
-	int x = (DISPLAY_WIDTH - text_width(text, scale)) / 2;
+	int width = text_width(text, scale);
+	int start_x = x + (w - width) / 2;
 
-	draw_text(strip_y, strip_h, MAX(x, 0), y, text, scale, color);
+	draw_text(strip_y, strip_h, MAX(start_x, x), y, text, scale, color);
+}
+
+static uint16_t rgb332_to_rgb565(uint8_t pixel)
+{
+	uint8_t r = (pixel >> 5) & 0x07U;
+	uint8_t g = (pixel >> 2) & 0x07U;
+	uint8_t b = pixel & 0x03U;
+	uint8_t red = (r << 5) | (r << 2) | (r >> 1);
+	uint8_t green = (g << 5) | (g << 2) | (g >> 1);
+	uint8_t blue = (b << 6) | (b << 4) | (b << 2) | b;
+
+	return COLOR_RGB565(red, green, blue);
+}
+
+static void draw_rgb332_bitmap(int strip_y, int strip_h, int x, int y,
+			       const struct display_rgb332_bitmap *bitmap)
+{
+	int x0;
+	int x1;
+	int y0;
+	int y1;
+
+	if (bitmap == NULL) {
+		return;
+	}
+
+	x0 = CLAMP(x, 0, DISPLAY_WIDTH);
+	x1 = CLAMP(x + bitmap->width, 0, DISPLAY_WIDTH);
+	y0 = MAX(y, strip_y);
+	y1 = MIN(y + bitmap->height, strip_y + strip_h);
+
+	if ((x0 >= x1) || (y0 >= y1)) {
+		return;
+	}
+
+	for (int gy = y0; gy < y1; gy++) {
+		int src_y = gy - y;
+		const uint8_t *src = &bitmap->data[src_y * bitmap->width + (x0 - x)];
+		uint16_t *dst = &strip_buffer[(gy - strip_y) * DISPLAY_WIDTH + x0];
+
+		for (int gx = x0; gx < x1; gx++) {
+			*dst++ = rgb332_to_rgb565(*src++);
+		}
+	}
+}
+
+static void draw_battery_icon(int strip_y, int strip_h, int x, int y, int w, int h,
+			      bool valid, int percent, uint16_t level_color)
+{
+	int body_w = w - 12;
+	int body_radius = 9;
+	int body_x = x;
+	int cap_x = x + body_w;
+	int cap_y = y + (h / 4);
+	int cap_h = h / 2;
+	int inner_x = body_x + 6;
+	int inner_y = y + 6;
+	int inner_w = body_w - 12;
+	int inner_h = h - 12;
+
+	draw_round_rect_outline(strip_y, strip_h, body_x, y, body_w, h, body_radius, 3,
+				COLOR_TEXT, COLOR_BG);
+	draw_round_rect_outline(strip_y, strip_h, cap_x, cap_y, 10, cap_h, 3, 2,
+				COLOR_TEXT, COLOR_BG);
+	fill_round_rect(strip_y, strip_h, inner_x, inner_y, inner_w, inner_h, 5,
+			COLOR_PANEL_BG);
+
+	if (valid && (percent > 0)) {
+		int fill_w = (inner_w * CLAMP(percent, 0, 100)) / 100;
+
+		if (fill_w > 0) {
+			fill_round_rect(strip_y, strip_h, inner_x, inner_y, fill_w, inner_h, 5,
+					level_color);
+		}
+	}
+
+	for (int i = 1; i < 4; i++) {
+		int separator_x = inner_x + (i * inner_w) / 4;
+
+		fill_rect(strip_y, strip_h, separator_x - 1, inner_y + 2, 3,
+			  inner_h - 4, COLOR_BG);
+	}
+}
+
+static void draw_charge_symbol(int strip_y, int strip_h, int center_x, int center_y,
+			       uint16_t color)
+{
+	draw_line(strip_y, strip_h, center_x + 8, center_y - 18,
+		  center_x - 2, center_y - 2, 4, color);
+	draw_line(strip_y, strip_h, center_x - 2, center_y - 2,
+		  center_x + 9, center_y - 2, 4, color);
+	draw_line(strip_y, strip_h, center_x + 9, center_y - 2,
+		  center_x - 8, center_y + 18, 4, color);
+	draw_line(strip_y, strip_h, center_x - 8, center_y + 18,
+		  center_x + 1, center_y + 6, 4, color);
+}
+
+static void render_left_section(int strip_y, int strip_h,
+				const struct display_state *state)
+{
+	char battery_text[8];
+	uint16_t level_color = state->battery_valid ?
+				battery_color(state->battery_percent) : COLOR_MUTED;
+	uint8_t text_scale;
+
+	if (state->battery_valid) {
+		snprintk(battery_text, sizeof(battery_text), "%d%%",
+			 state->battery_percent);
+	} else {
+		snprintk(battery_text, sizeof(battery_text), "--%%");
+	}
+
+	draw_battery_icon(strip_y, strip_h, BATTERY_ICON_X, BATTERY_ICON_Y,
+			  BATTERY_ICON_W, BATTERY_ICON_H, state->battery_valid,
+			  state->battery_percent, level_color);
+
+	text_scale = (text_width(battery_text, 4) <= LEFT_SECTION_W) ? 4 : 3;
+	draw_text_box_centered(strip_y, strip_h, LEFT_SECTION_X, LEFT_SECTION_W,
+			       BATTERY_TEXT_Y, battery_text, text_scale,
+			       state->battery_valid ? COLOR_TEXT : COLOR_MUTED);
+	draw_text_box_centered(strip_y, strip_h, LEFT_SECTION_X, LEFT_SECTION_W,
+			       BATTERY_LABEL_Y, "BAT", 2, COLOR_MUTED);
+}
+
+static void render_center_section(int strip_y, int strip_h,
+				  const struct display_state *state)
+{
+	int frame_x;
+	int frame_y;
+	int image_x;
+	int image_y;
+	int center_x = CENTER_SECTION_X + (CENTER_SECTION_W / 2);
+	uint16_t status_color = COLOR_GOOD;
+
+	if (state->charging || state->full) {
+		draw_circle_ring(strip_y, strip_h, center_x, 58, 34, 6,
+				 status_color, COLOR_BG);
+		draw_charge_symbol(strip_y, strip_h, center_x, 58, status_color);
+		draw_text_box_centered(strip_y, strip_h, CENTER_SECTION_X,
+				       CENTER_SECTION_W, CENTER_STATUS_Y,
+				       state->full ? "FULL" : "CHG",
+				       state->full ? 3 : 4, status_color);
+		return;
+	}
+
+	image_x = CENTER_SECTION_X +
+		  (CENTER_SECTION_W - display_idle_bitmap.width) / 2;
+	image_y = CENTER_VISUAL_Y;
+	frame_x = image_x - 3;
+	frame_y = image_y - 3;
+
+	fill_round_rect(strip_y, strip_h, frame_x, frame_y,
+			display_idle_bitmap.width + 6,
+			display_idle_bitmap.height + 6, 8, COLOR_PANEL_BG);
+	draw_round_rect_outline(strip_y, strip_h, frame_x, frame_y,
+				display_idle_bitmap.width + 6,
+				display_idle_bitmap.height + 6, 8, 1,
+				COLOR_PANEL_BORDER, COLOR_PANEL_BG);
+	draw_rgb332_bitmap(strip_y, strip_h, image_x, image_y,
+			   &display_idle_bitmap);
+}
+
+static void render_mode_row(int strip_y, int strip_h, int y, const char *label,
+			    enum app_mode mode, const struct display_state *state)
+{
+	bool selected = (state->mode == mode);
+	uint16_t fill = mode_fill_color(mode, selected);
+	uint16_t border = mode_border_color(mode, selected);
+	uint16_t indicator = mode_indicator_color(state, mode);
+	int dot_center_x = MODE_ROW_X + MODE_ROW_W - 14;
+	int dot_center_y = y + (MODE_ROW_H / 2);
+
+	fill_round_rect(strip_y, strip_h, MODE_ROW_X, y, MODE_ROW_W, MODE_ROW_H, 9,
+			fill);
+	draw_round_rect_outline(strip_y, strip_h, MODE_ROW_X, y, MODE_ROW_W,
+				MODE_ROW_H, 9, selected ? 2 : 1, border, fill);
+	draw_text_box_centered(strip_y, strip_h, MODE_ROW_X + 6, MODE_ROW_W - 26,
+			       y + 8, label, 3, COLOR_TEXT);
+	fill_circle(strip_y, strip_h, dot_center_x, dot_center_y, 5, indicator);
+}
+
+static void render_right_section(int strip_y, int strip_h,
+				 const struct display_state *state)
+{
+	draw_text_box_centered(strip_y, strip_h, RIGHT_SECTION_X, RIGHT_SECTION_W,
+			       MODE_TITLE_Y, "MODE", 3, COLOR_TEXT);
+	render_mode_row(strip_y, strip_h, MODE_USB_Y, "USB", APP_MODE_USB, state);
+	render_mode_row(strip_y, strip_h, MODE_BLE_Y, "BLE", APP_MODE_BLE, state);
 }
 
 static void collect_state(struct display_state *state)
@@ -307,7 +715,14 @@ static void collect_state(struct display_state *state)
 	state->charging = power_status.charging;
 	state->full = power_status.full;
 	state->battery_percent = power_status.battery_percent;
-	state->mode = mode_switch_get_mode();
+	state->mode = transport_manager_get_active_mode();
+	state->usb_enabled = usb_hid_module_is_enabled();
+	state->usb_ready = usb_hid_module_is_ready();
+	state->usb_vbus_present = usb_hid_module_has_vbus();
+	state->ble_enabled = ble_hid_module_is_enabled();
+	state->ble_ready = ble_hid_module_is_ready();
+	state->ble_connected = ble_hid_module_is_connected();
+	state->ble_advertising = ble_hid_module_is_advertising();
 }
 
 static bool state_equals(const struct display_state *lhs,
@@ -317,60 +732,28 @@ static bool state_equals(const struct display_state *lhs,
 	       (lhs->charging == rhs->charging) &&
 	       (lhs->full == rhs->full) &&
 	       (lhs->battery_percent == rhs->battery_percent) &&
-	       (lhs->mode == rhs->mode);
+	       (lhs->mode == rhs->mode) &&
+	       (lhs->usb_enabled == rhs->usb_enabled) &&
+	       (lhs->usb_ready == rhs->usb_ready) &&
+	       (lhs->usb_vbus_present == rhs->usb_vbus_present) &&
+	       (lhs->ble_enabled == rhs->ble_enabled) &&
+	       (lhs->ble_ready == rhs->ble_ready) &&
+	       (lhs->ble_connected == rhs->ble_connected) &&
+	       (lhs->ble_advertising == rhs->ble_advertising);
 }
 
 static void render_strip(int strip_y, int strip_h, const struct display_state *state)
 {
-	char battery_text[16];
-	char mode_line[16];
-	const char *status_text;
-	uint16_t battery_fg;
-	int inner_width;
-	int fill_width;
-
 	for (int i = 0; i < (DISPLAY_WIDTH * strip_h); i++) {
 		strip_buffer[i] = COLOR_BG;
 	}
 
-	if (state->battery_valid) {
-		snprintk(battery_text, sizeof(battery_text), "BAT %d%%",
-			 state->battery_percent);
-	} else {
-		snprintk(battery_text, sizeof(battery_text), "BAT --%%");
-	}
+	fill_rect(strip_y, strip_h, DIVIDER_X1, DIVIDER_Y, 2, DIVIDER_H, COLOR_DIVIDER);
+	fill_rect(strip_y, strip_h, DIVIDER_X2, DIVIDER_Y, 2, DIVIDER_H, COLOR_DIVIDER);
 
-	if (state->full) {
-		status_text = "FULL";
-	} else if (state->charging) {
-		status_text = "CHG";
-	} else {
-		status_text = "";
-	}
-
-	battery_fg = state->battery_valid ? battery_color(state->battery_percent) : COLOR_FG;
-	draw_text_centered(strip_y, strip_h, BATTERY_TEXT_Y, battery_text, 4, battery_fg);
-
-	if (status_text[0] != '\0') {
-		draw_text_centered(strip_y, strip_h, STATUS_TEXT_Y, status_text, 3,
-				   COLOR_MUTED);
-	}
-
-	fill_rect(strip_y, strip_h, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, COLOR_MUTED);
-	fill_rect(strip_y, strip_h, BAR_X + 2, BAR_Y + 2, BAR_WIDTH - 4, BAR_HEIGHT - 4,
-		  COLOR_BAR_BG);
-
-	if (state->battery_valid && (state->battery_percent > 0)) {
-		inner_width = BAR_WIDTH - 4;
-		fill_width = (inner_width * state->battery_percent) / 100;
-		fill_rect(strip_y, strip_h, BAR_X + 2, BAR_Y + 2, fill_width,
-			  BAR_HEIGHT - 4, battery_fg);
-	}
-
-	snprintk(mode_line, sizeof(mode_line), "MODE %s", mode_text(state->mode));
-
-	draw_text_centered(strip_y, strip_h, MODE_TEXT_Y, mode_line, 4,
-			   mode_color(state->mode));
+	render_left_section(strip_y, strip_h, state);
+	render_center_section(strip_y, strip_h, state);
+	render_right_section(strip_y, strip_h, state);
 }
 
 static int render_display(const struct display_state *state)

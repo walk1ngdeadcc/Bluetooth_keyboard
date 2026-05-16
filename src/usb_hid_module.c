@@ -457,5 +457,20 @@ int usb_hid_module_set_enabled(bool enabled)
 	return 0;
 }
 
+bool usb_hid_module_is_enabled(void)
+{
+	return usb_enabled;
+}
+
+bool usb_hid_module_is_ready(void)
+{
+	return usb_ready;
+}
+
+bool usb_hid_module_has_vbus(void)
+{
+	return usb_vbus_present;
+}
+
 APP_EVENT_LISTENER(MODULE, app_event_handler);
 APP_EVENT_SUBSCRIBE(MODULE, button_event);
