@@ -5,6 +5,10 @@
 
 #include "keymap.h"
 
+#ifndef HID_KEY_KPDOT
+#define HID_KEY_KPDOT 99
+#endif
+
 static const char *const keymap[] = {
 	"VOLUME_MUTE",
 	"NUM_LOCK",
@@ -43,7 +47,7 @@ static const struct keymap_hid_entry hid_keymap[] = {
 	[13] = { KEYMAP_HID_TYPE_KEYBOARD, HID_KEY_KP_2 },
 	[14] = { KEYMAP_HID_TYPE_KEYBOARD, HID_KEY_KP_3 },
 	[15] = { KEYMAP_HID_TYPE_KEYBOARD, HID_KEY_KP_0 },
-	[16] = { KEYMAP_HID_TYPE_KEYBOARD, HID_KEY_DOT },
+	[16] = { KEYMAP_HID_TYPE_KEYBOARD, HID_KEY_KPDOT },
 	[17] = { KEYMAP_HID_TYPE_KEYBOARD, HID_KEY_KPENTER },
 	[100] = { KEYMAP_HID_TYPE_CONSUMER, 0x00E9 },
 	[101] = { KEYMAP_HID_TYPE_CONSUMER, 0x00EA },

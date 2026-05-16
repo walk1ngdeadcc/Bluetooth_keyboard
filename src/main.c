@@ -6,9 +6,11 @@
 #include <zephyr/sys/printk.h>
 
 #include "key_matrix.h"
+#include "ble_hid_module.h"
 #include "mode_switch.h"
 #include "power_module.h"
 #include "rotary.h"
+#include "transport_manager.h"
 #include "usb_hid_module.h"
 
 int main(void)
@@ -32,6 +34,24 @@ int main(void)
 		return ret;
 	}
 
+	ret = usb_hid_module_init();
+	if (ret != 0) {
+		printk("usb hid init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = ble_hid_module_init();
+	if (ret != 0) {
+		printk("ble hid init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = transport_manager_init();
+	if (ret != 0) {
+		printk("transport manager init failed: %d\n", ret);
+		return ret;
+	}
+
 	ret = mode_switch_init();
 	if (ret != 0) {
 		printk("mode switch init failed: %d\n", ret);
@@ -42,11 +62,6 @@ int main(void)
 	if (ret != 0) {
 		printk("key matrix init failed: %d\n", ret);
 		return ret;
-	}
-
-	ret = usb_hid_module_init();
-	if (ret != 0) {
-		printk("usb hid init failed: %d, continue without usb hid\n", ret);
 	}
 
 	printk("keyboard app ready\n");

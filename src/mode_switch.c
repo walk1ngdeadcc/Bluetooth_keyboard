@@ -7,6 +7,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
+#include <app_event_manager.h>
+
+#include "mode_event.h"
 #include "mode_switch.h"
 
 #define MODE_ADC_NODE DT_PATH(zephyr_user)
@@ -17,45 +20,39 @@
 #define MODE_USB_THRESHOLD_MV 825
 #define MODE_BLE_THRESHOLD_MV 2475
 
-enum mode_switch_state {
-	MODE_SWITCH_USB = 0,
-	MODE_SWITCH_24G,
-	MODE_SWITCH_BLE,
-};
-
 struct mode_sample {
 	int32_t voltage_mv;
-	enum mode_switch_state state;
+	enum app_mode state;
 };
 
 static const struct adc_dt_spec mode_adc = ADC_DT_SPEC_GET_BY_NAME(MODE_ADC_NODE, mode);
 static struct k_work_delayable mode_sample_work;
-static enum mode_switch_state current_mode;
-static enum mode_switch_state pending_mode;
+static enum app_mode current_mode;
+static enum app_mode pending_mode;
 static uint8_t pending_count;
 static bool mode_initialized;
 
-static enum mode_switch_state mode_switch_decode(int32_t voltage_mv)
+static enum app_mode mode_switch_decode(int32_t voltage_mv)
 {
 	if (voltage_mv < MODE_USB_THRESHOLD_MV) {
-		return MODE_SWITCH_USB;
+		return APP_MODE_USB;
 	}
 
 	if (voltage_mv < MODE_BLE_THRESHOLD_MV) {
-		return MODE_SWITCH_24G;
+		return APP_MODE_24G;
 	}
 
-	return MODE_SWITCH_BLE;
+	return APP_MODE_BLE;
 }
 
-static const char *mode_switch_name(enum mode_switch_state state)
+static const char *mode_switch_name(enum app_mode state)
 {
 	switch (state) {
-	case MODE_SWITCH_USB:
+	case APP_MODE_USB:
 		return "USB";
-	case MODE_SWITCH_24G:
+	case APP_MODE_24G:
 		return "2.4G";
-	case MODE_SWITCH_BLE:
+	case APP_MODE_BLE:
 	default:
 		return "BLE";
 	}
@@ -93,8 +90,14 @@ static int mode_switch_read_sample(struct mode_sample *sample)
 	return 0;
 }
 
-static void mode_switch_report(enum mode_switch_state state, int32_t voltage_mv)
+static void mode_switch_submit(enum app_mode state, int32_t voltage_mv)
 {
+	struct mode_changed_event *event = new_mode_changed_event();
+
+	event->mode = state;
+	event->voltage_mv = voltage_mv;
+	APP_EVENT_SUBMIT(event);
+
 	printk("mode switch: %s, voltage=%dmV\n",
 	       mode_switch_name(state), voltage_mv);
 }
@@ -117,7 +120,7 @@ static void mode_sample_work_handler(struct k_work *work)
 		current_mode = sample.state;
 		pending_mode = sample.state;
 		pending_count = 0;
-		mode_switch_report(sample.state, sample.voltage_mv);
+		mode_switch_submit(sample.state, sample.voltage_mv);
 		goto reschedule;
 	}
 
@@ -141,7 +144,7 @@ static void mode_sample_work_handler(struct k_work *work)
 		current_mode = sample.state;
 		pending_mode = sample.state;
 		pending_count = 0;
-		mode_switch_report(sample.state, sample.voltage_mv);
+		mode_switch_submit(sample.state, sample.voltage_mv);
 	}
 
 reschedule:
@@ -169,4 +172,9 @@ int mode_switch_init(void)
 	       MODE_BLE_THRESHOLD_MV, MODE_BLE_THRESHOLD_MV);
 
 	return 0;
+}
+
+enum app_mode mode_switch_get_mode(void)
+{
+	return current_mode;
 }

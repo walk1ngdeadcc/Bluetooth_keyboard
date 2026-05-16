@@ -100,6 +100,8 @@ static struct usbd_context *usb_ctx;
 static uint8_t keyboard_report[KBD_REPORT_SIZE];
 static uint8_t consumer_report[3];
 static bool usb_ready;
+static bool usb_enabled;
+static bool usb_vbus_present;
 
 static int usb_hid_setup_device(void)
 {
@@ -145,15 +147,19 @@ static void usb_status_cb(struct usbd_context *const usbd_ctx,
 	ARG_UNUSED(usbd_ctx);
 
 	if (msg->type == USBD_MSG_CONFIGURATION) {
-		usb_ready = (msg->status != 0);
+		usb_ready = usb_enabled && (msg->status != 0);
 	}
 
 	if (usbd_can_detect_vbus(usb_ctx)) {
 		if (msg->type == USBD_MSG_VBUS_READY) {
-			(void)usbd_enable(usb_ctx);
+			usb_vbus_present = true;
+			if (usb_enabled) {
+				(void)usbd_enable(usb_ctx);
+			}
 		}
 
 		if (msg->type == USBD_MSG_VBUS_REMOVED) {
+			usb_vbus_present = false;
 			usb_ready = false;
 			(void)usbd_disable(usb_ctx);
 		}
@@ -163,7 +169,7 @@ static void usb_status_cb(struct usbd_context *const usbd_ctx,
 static void kb_iface_ready(const struct device *dev, const bool ready)
 {
 	ARG_UNUSED(dev);
-	usb_ready = ready;
+	usb_ready = usb_enabled && ready;
 }
 
 static int kb_get_report(const struct device *dev,
@@ -230,7 +236,7 @@ static struct hid_device_ops hid_ops = {
 
 static int usb_hid_submit(const uint8_t *report, size_t size)
 {
-	if (!usb_ready) {
+	if (!usb_enabled || !usb_ready) {
 		return -EAGAIN;
 	}
 
@@ -292,6 +298,10 @@ static void handle_button_event(const struct button_event *event)
 	const struct keymap_hid_entry *map = keymap_hid_get(event->key_id);
 	int err;
 
+	if (!usb_enabled) {
+		return;
+	}
+
 	if (map == NULL) {
 		return;
 	}
@@ -349,7 +359,7 @@ int usb_hid_module_init(void)
 		return err;
 	}
 
-	if (!usbd_can_detect_vbus(usb_ctx)) {
+	if (usb_enabled && !usbd_can_detect_vbus(usb_ctx)) {
 		err = usbd_enable(usb_ctx);
 		if (err != 0) {
 			return err;
@@ -370,6 +380,63 @@ static bool app_event_handler(const struct app_event_header *aeh)
 	}
 
 	return false;
+}
+
+int usb_hid_module_release_all(void)
+{
+	int err;
+
+	memset(&keyboard_report[KBD_MODIFIER_IDX], 0,
+	       sizeof(keyboard_report) - KBD_MODIFIER_IDX);
+	keyboard_report[KBD_REPORT_ID_IDX] = USB_HID_KEYBOARD_REPORT_ID;
+
+	err = usb_hid_submit(keyboard_report, sizeof(keyboard_report));
+	if ((err != 0) && (err != -EAGAIN)) {
+		printk("usb hid keyboard release failed: %d\n", err);
+	}
+
+	consumer_report[0] = USB_HID_CONSUMER_REPORT_ID;
+	consumer_report[1] = 0;
+	consumer_report[2] = 0;
+	err = usb_hid_submit(consumer_report, sizeof(consumer_report));
+	if ((err != 0) && (err != -EAGAIN)) {
+		printk("usb hid consumer release failed: %d\n", err);
+	}
+
+	return 0;
+}
+
+int usb_hid_module_set_enabled(bool enabled)
+{
+	int err = 0;
+
+	if (!enabled) {
+		(void)usb_hid_module_release_all();
+		usb_enabled = false;
+		if (usb_ctx != NULL) {
+			err = usbd_disable(usb_ctx);
+			if ((err != 0) && (err != -EALREADY)) {
+				return err;
+			}
+		}
+		usb_ready = false;
+		return 0;
+	}
+
+	usb_enabled = true;
+
+	if (usb_ctx == NULL) {
+		return 0;
+	}
+
+	if (!usbd_can_detect_vbus(usb_ctx) || usb_vbus_present) {
+		err = usbd_enable(usb_ctx);
+		if ((err != 0) && (err != -EALREADY)) {
+			return err;
+		}
+	}
+
+	return 0;
 }
 
 APP_EVENT_LISTENER(MODULE, app_event_handler);
