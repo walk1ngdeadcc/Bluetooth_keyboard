@@ -13,6 +13,7 @@
 #include <zephyr/usb/usbd.h>
 #include <zephyr/usb/class/hid.h>
 #include <zephyr/usb/class/usbd_hid.h>
+#include <nrfx_power.h>
 
 #include "keymap.h"
 #include "usb_hid_module.h"
@@ -102,6 +103,18 @@ static uint8_t consumer_report[3];
 static bool usb_ready;
 static bool usb_enabled;
 static bool usb_vbus_present;
+
+static void usb_sync_vbus_state(void)
+{
+	if ((usb_ctx == NULL) || !usbd_can_detect_vbus(usb_ctx)) {
+		return;
+	}
+
+#if NRF_POWER_HAS_USBREG
+	usb_vbus_present =
+		(nrfx_power_usbstatus_get() != NRFX_POWER_USB_STATE_DISCONNECTED);
+#endif
+}
 
 static int usb_hid_setup_device(void)
 {
@@ -359,7 +372,10 @@ int usb_hid_module_init(void)
 		return err;
 	}
 
-	if (usb_enabled && !usbd_can_detect_vbus(usb_ctx)) {
+	usb_sync_vbus_state();
+
+	if (usb_enabled &&
+	    (!usbd_can_detect_vbus(usb_ctx) || usb_vbus_present)) {
 		err = usbd_enable(usb_ctx);
 		if (err != 0) {
 			return err;
@@ -428,6 +444,8 @@ int usb_hid_module_set_enabled(bool enabled)
 	if (usb_ctx == NULL) {
 		return 0;
 	}
+
+	usb_sync_vbus_state();
 
 	if (!usbd_can_detect_vbus(usb_ctx) || usb_vbus_present) {
 		err = usbd_enable(usb_ctx);
