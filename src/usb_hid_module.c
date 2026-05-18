@@ -17,6 +17,7 @@
 
 #include "keymap.h"
 #include "usb_hid_module.h"
+#include "usb_host_proto.h"
 
 #define USB_VID_ZEPHYR_PROJECT 0x2FE3
 #define USB_PID_BLUETOOTH_KEYBOARD 0x0007
@@ -177,6 +178,8 @@ static void usb_status_cb(struct usbd_context *const usbd_ctx,
 			(void)usbd_disable(usb_ctx);
 		}
 	}
+
+	usb_host_proto_handle_usbd_msg(msg);
 }
 
 static void kb_iface_ready(const struct device *dev, const bool ready)
@@ -429,6 +432,7 @@ int usb_hid_module_set_enabled(bool enabled)
 	if (!enabled) {
 		(void)usb_hid_module_release_all();
 		usb_enabled = false;
+		usb_host_proto_set_usb_enabled(false);
 		if (usb_ctx != NULL) {
 			err = usbd_disable(usb_ctx);
 			if ((err != 0) && (err != -EALREADY)) {
@@ -440,6 +444,7 @@ int usb_hid_module_set_enabled(bool enabled)
 	}
 
 	usb_enabled = true;
+	usb_host_proto_set_usb_enabled(true);
 
 	if (usb_ctx == NULL) {
 		return 0;

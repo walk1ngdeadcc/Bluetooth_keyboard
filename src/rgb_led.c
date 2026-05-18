@@ -206,6 +206,31 @@ int rgb_led_set_all_red(uint8_t level)
 	return 0;
 }
 
+int rgb_led_set_all(uint8_t red, uint8_t green, uint8_t blue)
+{
+	int ret;
+
+	if (!rgb_initialized) {
+		return -EACCES;
+	}
+
+	ret = rgb_power_set(true);
+	if (ret != 0) {
+		return ret;
+	}
+
+	rgb_fill_all(red, green, blue);
+
+	ret = rgb_push();
+	if (ret != 0) {
+		printk("rgb update failed: %d\n", ret);
+		return ret;
+	}
+
+	printk("rgb set all: r=0x%02x g=0x%02x b=0x%02x\n", red, green, blue);
+	return 0;
+}
+
 int rgb_led_off(void)
 {
 	int ret;

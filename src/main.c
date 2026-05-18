@@ -14,6 +14,7 @@
 #include "rotary.h"
 #include "transport_manager.h"
 #include "usb_hid_module.h"
+#include "usb_host_proto.h"
 
 int main(void)
 {
@@ -45,6 +46,12 @@ int main(void)
 	ret = usb_hid_module_init();
 	if (ret != 0) {
 		printk("usb hid init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = usb_host_proto_init();
+	if (ret != 0) {
+		printk("usb host proto init failed: %d\n", ret);
 		return ret;
 	}
 

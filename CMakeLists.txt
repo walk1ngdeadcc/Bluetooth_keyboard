@@ -20,4 +20,5 @@ target_sources(app PRIVATE
     src/rotary.c
     src/transport_manager.c
     src/usb_hid_module.c
+    src/usb_host_proto.c
 )
