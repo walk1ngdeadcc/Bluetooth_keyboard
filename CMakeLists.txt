@@ -16,6 +16,7 @@ target_sources(app PRIVATE
     src/mode_switch.c
     src/power_trace.c
     src/power_module.c
+    src/rgb_led.c
     src/rotary.c
     src/transport_manager.c
     src/usb_hid_module.c

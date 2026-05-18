@@ -3,6 +3,7 @@
 #include "Bluetooth_keyboard-pinctrl.dtsi"
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/dt-bindings/adc/adc.h>
+#include <zephyr/dt-bindings/led/led.h>
 #include <zephyr/dt-bindings/mipi_dbi/mipi_dbi.h>
 #include <zephyr/dt-bindings/pwm/pwm.h>
 
@@ -15,6 +16,7 @@
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
 		zephyr,display = &st7789v_lcd;
+		zephyr,led-strip = &kb_rgb;
 	};
 
 	rotary_qdec: rotary-qdec {
@@ -34,6 +36,7 @@
 		io-channel-names = "battery", "mode";
 		pwms = <&pwm0 0 PWM_USEC(50) PWM_POLARITY_INVERTED>;
 		pwm-names = "lcd_backlight";
+		rgb-pwr-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
 	};
 
 	mipi_dbi {
@@ -178,4 +181,24 @@
 	pinctrl-1 = <&spi3_sleep>;
 	pinctrl-names = "default", "sleep";
 	cs-gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+};
+
+&spi2 {
+	status = "okay";
+	pinctrl-0 = <&spi2_rgb_default>;
+	pinctrl-1 = <&spi2_rgb_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	kb_rgb: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <4000000>;
+		chain-length = <17>;
+		color-mapping = <LED_COLOR_ID_GREEN
+				 LED_COLOR_ID_RED
+				 LED_COLOR_ID_BLUE>;
+		spi-one-frame = <0x70>;
+		spi-zero-frame = <0x40>;
+		reset-delay = <300>;
+	};
 };

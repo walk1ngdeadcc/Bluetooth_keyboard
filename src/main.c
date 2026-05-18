@@ -10,6 +10,7 @@
 #include "display_module.h"
 #include "mode_switch.h"
 #include "power_module.h"
+#include "rgb_led.h"
 #include "rotary.h"
 #include "transport_manager.h"
 #include "usb_hid_module.h"
@@ -32,6 +33,12 @@ int main(void)
 	ret = power_module_init();
 	if (ret != 0) {
 		printk("power module init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = rgb_led_init();
+	if (ret != 0) {
+		printk("rgb led init failed: %d\n", ret);
 		return ret;
 	}
 
