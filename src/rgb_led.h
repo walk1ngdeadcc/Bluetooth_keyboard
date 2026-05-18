@@ -7,5 +7,7 @@ int rgb_led_init(void);
 int rgb_led_set_all(uint8_t red, uint8_t green, uint8_t blue);
 int rgb_led_set_all_red(uint8_t level);
 int rgb_led_off(void);
+int rgb_led_restore(void);
+void rgb_led_request_restore(void);
 
 #endif /* RGB_LED_H_ */

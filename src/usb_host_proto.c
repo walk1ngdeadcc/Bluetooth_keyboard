@@ -731,6 +731,10 @@ void usb_host_proto_handle_usbd_msg(const struct usbd_msg *msg)
 	}
 
 	switch (msg->type) {
+	case USBD_MSG_VBUS_READY:
+		rgb_led_request_restore();
+		break;
+
 	case USBD_MSG_CDC_ACM_CONTROL_LINE_STATE:
 		if (msg->dev != usb_host_proto_uart) {
 			return;
@@ -757,6 +761,8 @@ void usb_host_proto_handle_usbd_msg(const struct usbd_msg *msg)
 		break;
 
 	case USBD_MSG_VBUS_REMOVED:
+		rgb_led_request_restore();
+		__fallthrough;
 	case USBD_MSG_RESET:
 		usb_host_proto_dtr_asserted = false;
 		uart_irq_rx_disable(usb_host_proto_uart);
