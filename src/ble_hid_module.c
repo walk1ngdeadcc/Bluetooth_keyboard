@@ -18,7 +18,6 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/printk.h>
-
 #include <bluetooth/adv_prov.h>
 #include <bluetooth/adv_prov/swift_pair.h>
 #include <bluetooth/services/hids.h>

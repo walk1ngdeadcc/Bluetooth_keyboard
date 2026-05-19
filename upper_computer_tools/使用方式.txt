@@ -1,0 +1,30 @@
+图形界面启动
+python host_gui.py
+
+双击启动图形界面
+优先双击：双击启动图形界面.vbs
+备选双击：启动图形界面.pyw
+控制台方式：启动图形界面.cmd
+
+NumLock 自定义功能
+1. 在图形界面里给 slot1~slot9 配置动作
+2. 点击“保存动作配置”
+3. 点击“启动 USB 监听”
+4. 键盘进入 NumLock 自定义层后，按小键盘 1~9 会触发对应动作
+5. 配置保存在 custom_actions.json
+
+打包 exe
+双击：打包exe.cmd
+打包成功后生成：
+dist\MiniKeyboardHost.exe
+
+命令行扫描可用 USB 串口
+python host_cli.py scan
+
+命令行同步时间（假设串口是 COM3）
+python host_cli.py COM3 time
+
+命令行设置颜色（假设串口是 COM3）
+python host_cli.py COM3 rgb 255 0 0
+python host_cli.py COM3 rgb 0 255 0
+python host_cli.py COM3 rgb 0 0 255

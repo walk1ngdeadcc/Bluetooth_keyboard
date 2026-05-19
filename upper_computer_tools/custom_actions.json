@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "slots": {
+    "1": {
+      "type": "open",
+      "target": "D:/codeSoftware/VSCode/Microsoft VS Code/Code.exe"
+    },
+    "2": {
+      "type": "url",
+      "target": "https://chatgpt.com/"
+    },
+    "3": {
+      "type": "none",
+      "target": ""
+    },
+    "4": {
+      "type": "none",
+      "target": ""
+    },
+    "5": {
+      "type": "none",
+      "target": ""
+    },
+    "6": {
+      "type": "none",
+      "target": ""
+    },
+    "7": {
+      "type": "url",
+      "target": "https://www.douyin.com/"
+    },
+    "8": {
+      "type": "url",
+      "target": "https://www.bilibili.com/"
+    },
+    "9": {
+      "type": "open",
+      "target": "D:/QQ音乐/QQMusic/QQMusic.exe"
+    }
+  }
+}

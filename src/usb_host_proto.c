@@ -32,11 +32,13 @@
 #define USB_HOST_PROTO_FIRMWARE_MAJOR 0U
 #define USB_HOST_PROTO_FIRMWARE_MINOR 0U
 #define USB_HOST_PROTO_CAP_THEME_RGB 0x04U
+#define USB_HOST_PROTO_CAP_CUSTOM_ACTION 0x08U
 
 #define PROTO_FIELD_HELLO_REQ 1U
 #define PROTO_FIELD_HELLO_RSP 2U
 #define PROTO_FIELD_THEME_RGB 7U
 #define PROTO_FIELD_RESPONSE 8U
+#define PROTO_FIELD_ACTION_TRIGGER 9U
 #define PROTO_FIELD_MSG_ID 10U
 #define PROTO_FIELD_REPLY_TO 11U
 
@@ -47,6 +49,7 @@
 #define PROTO_THEME_BLUE_FIELD 3U
 
 #define PROTO_RESPONSE_ERROR_CODE_FIELD 1U
+#define PROTO_ACTION_TRIGGER_SLOT_FIELD 1U
 
 #define PB_WIRE_VARINT 0U
 #define PB_WIRE_FIXED64 1U
@@ -490,7 +493,8 @@ static void usb_host_proto_send_hello_rsp(uint32_t reply_to)
 	    pb_write_field_varint(body, sizeof(body), &body_len, 5U,
 				  USB_HOST_PROTO_FIRMWARE_MINOR) != 0 ||
 	    pb_write_field_varint(body, sizeof(body), &body_len, 6U,
-				  USB_HOST_PROTO_CAP_THEME_RGB) != 0) {
+				  USB_HOST_PROTO_CAP_THEME_RGB |
+				  USB_HOST_PROTO_CAP_CUSTOM_ACTION) != 0) {
 		return;
 	}
 
@@ -510,6 +514,52 @@ static void usb_host_proto_send_hello_rsp(uint32_t reply_to)
 	if (usb_host_proto_send_payload(payload, payload_len) != 0) {
 		printk("usb host proto hello response send failed\n");
 	}
+}
+
+bool usb_host_proto_is_active(void)
+{
+	return usb_host_proto_initialized &&
+	       usb_host_proto_usb_enabled &&
+	       usb_host_proto_dtr_asserted &&
+	       (usb_host_proto_session == PROTO_SESSION_ACTIVE);
+}
+
+int usb_host_proto_send_action_trigger(uint8_t slot)
+{
+	uint8_t body[8];
+	uint8_t payload[USB_HOST_PROTO_MAX_PAYLOAD_LEN];
+	size_t body_len = 0U;
+	size_t payload_len = 0U;
+	int ret;
+
+	if ((slot == 0U) || (slot > 9U)) {
+		return -EINVAL;
+	}
+
+	if (!usb_host_proto_is_active()) {
+		return -EACCES;
+	}
+
+	ret = pb_write_field_varint(body, sizeof(body), &body_len,
+				    PROTO_ACTION_TRIGGER_SLOT_FIELD,
+				    slot);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pb_write_field_len(payload, sizeof(payload), &payload_len,
+				 PROTO_FIELD_ACTION_TRIGGER,
+				 body, body_len);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = usb_host_proto_send_payload(payload, payload_len);
+	if (ret == 0) {
+		printk("usb host proto action trigger: slot=%u\n", slot);
+	}
+
+	return ret;
 }
 
 static void usb_host_proto_process_message(const struct proto_message *msg)

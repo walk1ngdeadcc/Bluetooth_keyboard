@@ -7,6 +7,8 @@
 
 #include "key_matrix.h"
 #include "ble_hid_module.h"
+#include "ble_host_action_service.h"
+#include "custom_action_layer.h"
 #include "display_module.h"
 #include "mode_switch.h"
 #include "power_module.h"
@@ -61,9 +63,21 @@ int main(void)
 		return ret;
 	}
 
+	ret = ble_host_action_service_init();
+	if (ret != 0) {
+		printk("ble host action service init failed: %d\n", ret);
+		return ret;
+	}
+
 	ret = transport_manager_init();
 	if (ret != 0) {
 		printk("transport manager init failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = custom_action_layer_init();
+	if (ret != 0) {
+		printk("custom action layer init failed: %d\n", ret);
 		return ret;
 	}
 

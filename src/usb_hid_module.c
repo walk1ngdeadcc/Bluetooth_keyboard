@@ -209,6 +209,7 @@ static int kb_set_report(const struct device *dev,
 	ARG_UNUSED(id);
 	ARG_UNUSED(len);
 	ARG_UNUSED(buf);
+
 	return 0;
 }
 
